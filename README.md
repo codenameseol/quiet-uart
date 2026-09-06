@@ -1,78 +1,51 @@
 # quiet-uart
 
-> 잡음 속에서 신호만 골라내는 아주 작은 UART 프레이머
+<details open><summary>언어 전환 · Language switch</summary>
+
+한국어를 먼저 쓰고 영어를 바로 병기합니다. GitHub Markdown은 script/canvas를 실행하지 않으므로 native disclosure를 사용합니다. / Korean comes first with English immediately paired. GitHub Markdown cannot execute script/canvas, so this native disclosure is the supported switch.
+
+</details>
+
+## 잡음 속에서 신호 찾기 · Find the signal in the noise
+
+임베디드 serial link를 위한 작은 byte-stream framing protocol입니다.
+A tiny byte-stream framing protocol for an embedded serial link.
 
 ![language](https://img.shields.io/badge/language-C-555555?logo=c&logoColor=white)
 
-## 취향 노트
+## 프레임 구조 · Frame structure
 
-시리얼 선 위에는 늘 잡음이 조금씩 섞여 있습니다. 전원이 살짝 흔들리거나 케이블이 헐거워지기만 해도 알 수 없는 바이트들이 툭툭 끼어들어요. 그 지지직거리는 흐름 속에서 "이게 진짜 신호구나" 하고 정확히 골라내는 순간이 저는 유독 좋았습니다. 작더라도, 실제로 동작하는 걸 손으로 만들어보고 싶어서 하드웨어에 가까운 이 작은 프레이머를 짜봤어요.
-
-## 무엇을 하나요
-
-`quiet-uart`는 임베디드 시리얼 링크에서 쓸 법한, 아주 작은 바이트 스트림 프레이밍 프로토콜입니다. 페이로드를 감싸서 어디서부터 어디까지가 하나의 프레임인지 표시하고, 체크섬으로 깨진 프레임을 걸러내고, 프레임 앞뒤나 사이에 낀 잡음 바이트는 조용히 무시합니다.
-
-### 프레임 구조
-
-```
-  0x7E │ LEN │ payload (LEN bytes) │ checksum │ 0x7E
-   ^                                              ^
- 시작 구분자                                   종료 구분자
-                                   (다음 프레임의 시작 구분자 역할도 겸함)
-
-  checksum = payload 바이트 전체를 XOR한 값
+```text
+0x7E │ LEN │ payload (LEN bytes) │ checksum │ 0x7E
+ ^                                              ^
+start delimiter                         end / next start delimiter
+checksum = XOR(all payload bytes)
 ```
 
-### 바이트 스터핑 (escaping)
+`0x7E`와 `0x7D`는 byte-stuffing으로 escape합니다. 잡음 바이트는 시작 구분자 전까지 무시하고, 잘못된 checksum/length는 버립니다.
+`0x7E` and `0x7D` are escaped with byte-stuffing. Noise before a start delimiter is ignored; invalid checksum/length frames are discarded.
 
-구분자(`0x7E`)나 escape 바이트(`0x7D`)가 LEN/payload/checksum 어딘가에 실제로 등장하면, 그 자리를 2바이트로 바꿔서 내보냅니다.
-
-```
-  0x7E  ->  0x7D, (0x7E ^ 0x20)  =  0x7D 0x5E
-  0x7D  ->  0x7D, (0x7D ^ 0x20)  =  0x7D 0x5D
-```
-
-이렇게 하면 프레임 몸통 안에서 구분자가 "우연히" 다시 나타나는 일이 없어집니다.
-
-### 왜 잡음 속에서도 신호를 찾나요
-
-`frame_parser_feed()`는 한 바이트씩 받으면서, 첫 시작 구분자(`0x7E`)를 보기 전까지는 아무 바이트나 조용히 흘려보냅니다. 프레임이 한 번 시작된 뒤로는 구분자 하나가 "이전 프레임 마감 + 다음 프레임 시작"을 동시에 하기 때문에(HDLC류 프로토콜에서 흔히 쓰는 방식이에요), 잡음 속에 우연히 끼어든 `0x7E` 하나 때문에 진짜 프레임을 놓치는 일이 없습니다. 체크섬이 안 맞거나 길이가 이상한 프레임은 그냥 버려지고, 파서는 다음 프레임을 계속 기다립니다.
-
-## 써보기 / 테스트
-
-C11, 표준 라이브러리만 사용합니다. gcc나 clang이 있으면 바로 빌드할 수 있어요.
+## 실행·테스트 · Run and test
 
 ```sh
 make test
 ```
 
-`tests/test_frame.c`에는 assert 기반으로 다음을 확인하는 테스트가 있습니다.
+테스트는 encode/decode 왕복, escaping, checksum 오류, 잡음이 섞인 stream 복구를 확인합니다.
+Tests cover encode/decode round trips, escaping, checksum rejection, and recovery from noisy streams.
 
-- 평범한 payload의 encode → decode 왕복
-- escape가 필요한 바이트(`0x7E`, `0x7D` 포함)가 들어간 payload 왕복
-- 체크섬이 깨진 프레임이 제대로 거부되는지
-- **앞뒤에 잡음 바이트를 잔뜩 섞은 스트림에서도 진짜 프레임 하나를 정확히 찾아내는지** — 이 저장소 이름의 "quiet"가 뜻하는 부분입니다
+## 구조 · Structure
 
-## 구조
-
-```
-quiet-uart/
-├── src/
-│   ├── frame.h       # 프레임 포맷 상수, 파서 상태머신 선언
-│   └── frame.c        # encode_frame(), frame_parser_feed() 구현
-├── tests/
-│   └── test_frame.c   # assert 기반 테스트
-├── Makefile            # make test / make clean
-└── .github/workflows/test.yml   # 커밋마다 make test를 그대로 실행하는 아주 작은 워크플로우
+```text
+src/frame.h   # format constants and parser state / 포맷 상수와 상태머신
+src/frame.c   # encode_frame and frame_parser_feed
+tests/test_frame.c
 ```
 
-## 아직 안 한 것 / 한계
+## 한계 · Boundaries
 
-- 프레임 하나의 payload는 최대 255바이트입니다 (LEN이 1바이트라서요).
-- 실제 UART 하드웨어(레지스터, 인터럽트, DMA 등)는 다루지 않습니다. 순수하게 바이트 스트림 위의 프레이밍 로직만 있어요.
-- 재전송·ACK·타임아웃 같은 상위 레이어는 아직 없습니다. 아직 배워가는 중입니다 — 시간이 되면 조금씩 더 파보고 싶어요.
-
-이 프로젝트는 주말에 손 가는 대로 만들어본 아주 작은 실험입니다. 완성된 정답보다 작은 시도와 발견을 나누고 싶어요.
+payload 최대 크기는 255 bytes입니다. 실제 UART register, interrupt, DMA, retransmission, ACK, timeout은 구현하지 않습니다.
+Payload is limited to 255 bytes. UART registers, interrupts, DMA, retransmission, ACK, and timeout are not implemented.
 
 ## License
 
