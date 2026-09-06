@@ -1,11 +1,5 @@
 # quiet-uart
 
-<details open><summary>언어 전환 · Language switch</summary>
-
-한국어를 먼저 쓰고 영어를 바로 병기합니다. GitHub Markdown은 script/canvas를 실행하지 않으므로 native disclosure를 사용합니다. / Korean comes first with English immediately paired. GitHub Markdown cannot execute script/canvas, so this native disclosure is the supported switch.
-
-</details>
-
 ## 잡음 속에서 신호 찾기 · Find the signal in the noise
 
 임베디드 serial link를 위한 작은 byte-stream framing protocol입니다.
